@@ -17,7 +17,7 @@ def map_content(source_df, site_df):
     source_df = remove_duplicates(source_df)
     source_dict = {row['Design Copy']: (index, row['Revised Copy']) for index, row in source_df.iterrows()}
 
-    for col in ['Mapped Cell', 'Revised Copy']:
+    for col in ['Revised Copy', 'Mapped Cell']:
         if col not in site_df.columns:
             site_df[col] = ''
 
