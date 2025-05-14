@@ -3,6 +3,7 @@ import pandas as pd
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 def remove_duplicates(source_df):
     duplicates = source_df.duplicated(subset=['Revised Copy'], keep='first')
@@ -17,10 +18,16 @@ def map_content(source_df, site_df):
     source_df = remove_duplicates(source_df)
     source_dict = {row['Design Copy']: (index, row['Revised Copy']) for index, row in source_df.iterrows()}
 
-    for col in ['Revised Copy', 'Mapped Cell']:
-        if col not in site_df.columns:
-            site_df[col] = ''
+   
+    # Add 'Revised Copy' column if it doesn't exist
+    if 'Revised Copy' not in site_df.columns:
+        site_df['Revised Copy'] = ''
 
+     # Add 'Mapped Cell' column if it doesn't exist
+    if 'Mapped Cell' not in site_df.columns:
+        site_df['Mapped Cell'] = ''
+
+    
     for index, row in site_df.iterrows():
         design_copy = row['Design Copy']
         if design_copy in source_dict:
@@ -33,38 +40,114 @@ def map_content(source_df, site_df):
     return site_df
 
 def structure_and_format_data(raw_data, group_column='frame'):
+    # Get unique frames in their original order of appearance
     frame_order = raw_data[group_column].dropna().drop_duplicates().tolist()
+
+    # Group data by the specified column WITHOUT sorting
+    grouped_data = raw_data.groupby(group_column, as_index=False, sort=False)
+
+    # Create structured DataFrame
     structured_data = pd.DataFrame(columns=raw_data.columns)
 
-    for name in frame_order:
-        group = raw_data[raw_data[group_column] == name].reset_index(drop=True)
-        
+    # Build structured data with title rows and empty rows
+    for name, group in grouped_data:
+        # Add frame title row
         title_row = pd.DataFrame([[name] + [''] * (len(raw_data.columns) - 1)],
-                               columns=raw_data.columns)
+                                 columns=raw_data.columns)
         structured_data = pd.concat([structured_data, title_row], ignore_index=True)
-        structured_data = pd.concat([structured_data,
-                                   pd.DataFrame([[''] * len(raw_data.columns)],
-                                   columns=raw_data.columns)], ignore_index=True)
-        structured_data = pd.concat([structured_data, group], ignore_index=True)
-        structured_data = pd.concat([structured_data,
-                                   pd.DataFrame([[''] * len(raw_data.columns)],
-                                   columns=raw_data.columns)], ignore_index=True)
 
-    return structured_data.iloc[:-1]
+        # Add empty row
+        structured_data = pd.concat([structured_data,
+                                     pd.DataFrame([[''] * len(raw_data.columns)],
+                                     columns=raw_data.columns)], ignore_index=True)
+
+        # Add group data
+        structured_data = pd.concat([structured_data, group], ignore_index=True)
+
+        # Add empty row
+        structured_data = pd.concat([structured_data,
+                                     pd.DataFrame([[''] * len(raw_data.columns)],
+                                     columns=raw_data.columns)], ignore_index=True)
+
+    # Remove last empty row
+    structured_data = structured_data.iloc[:-1]
+
+    return structured_data
 
 def to_excel(df):
     output = BytesIO()
     writer = pd.ExcelWriter(output, engine='openpyxl')
     df.to_excel(writer, index=False, sheet_name='Sheet1')
 
+    # Access the workbook and the worksheet for styling
     workbook = writer.book
     worksheet = writer.sheets['Sheet1']
+
+    # Define a fill style for the title rows
     fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
 
-    for idx, row in enumerate(worksheet.iter_rows(min_row=1), 1):
-        if worksheet.cell(row=idx, column=1).value in df['frame'].dropna().unique():
+    # Apply the fill to the title rows
+    for row in worksheet.iter_rows():
+        if row[0].value in df['frame'].dropna().unique():
             for cell in row:
                 cell.fill = fill
 
     writer.close()
-    return output.getvalue()
+    processed_data = output.getvalue()
+    return processed_data
+
+# Streamlit UI
+st.title("Excel Content Mapper")
+
+st.write("""
+### Upload your files
+1. **Source File** - Contains the original and revised copies
+2. **Site File** - File to be updated with mapping information
+""")
+
+source_file = st.file_uploader("Upload Source Excel File", type=['xlsx'])
+site_file = st.file_uploader("Upload Site Excel File", type=['xlsx'])
+
+if source_file and site_file:
+    # Read files
+    source_df = pd.read_excel(source_file)
+    site_df = pd.read_excel(site_file, dtype=str)
+
+    # Button to process files: mapping first, then structuring
+    if st.button("Process Files"):
+        try:
+            with st.spinner('Mapping files...'):
+                mapped_site_df = map_content(source_df, site_df)
+                st.session_state['mapped_site_df'] = mapped_site_df
+
+            st.success("File mapping completed!")
+
+            st.write("### Preview of Mapped Data")
+            st.dataframe(mapped_site_df.head())
+
+            with st.spinner('Structuring files...'):
+                structured_site_df = structure_and_format_data(mapped_site_df, group_column='frame')
+                st.session_state['structured_site_df'] = structured_site_df
+
+            st.success("File structuring completed!")
+
+            st.write("### Preview of Structured Data")
+            st.dataframe(structured_site_df.head(10))
+
+            # Generate the output filename
+            original_filename = site_file.name.replace('.xlsx', '')
+            output_filename = f"Mapped_{original_filename}.xlsx"
+
+            st.write("### Download Final File")
+            excel_data = to_excel(structured_site_df)
+            st.download_button(
+                label="Download Final File",
+                data=excel_data,
+                file_name=output_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        except KeyError as e:
+            st.error(f"Missing required column: {e}")
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
