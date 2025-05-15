@@ -162,17 +162,11 @@ with st.expander("💬 Provide Feedback", expanded=True):
 
     if not st.session_state.feedback_submitted:
         with st.form("feedback_form"):
-            rating = st.radio(
-                "How would you rate this app?",
-                options=[5, 4, 3, 2, 1],
-                format_func=lambda x: f"{x} {'⭐' * x}",
-                index=None
-            )
             comments = st.text_area("Your comments/suggestions")
             
             if st.form_submit_button("📤 Submit Feedback"):
                 if rating:
-                    if store_feedback(rating, comments):
+                    if store_feedback("", comments):
                         st.session_state.feedback_submitted = True
                         st.success("🎉 Thank you for your feedback!")
                     else:
@@ -184,6 +178,3 @@ with st.expander("💬 Provide Feedback", expanded=True):
         if st.button("📝 Submit New Feedback"):
             st.session_state.feedback_submitted = False
             st.rerun()
-
-
-
