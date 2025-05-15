@@ -165,14 +165,11 @@ with st.expander("💬 Provide Feedback", expanded=True):
             comments = st.text_area("Your comments/suggestions")
             
             if st.form_submit_button("📤 Submit Feedback"):
-                if rating:
                     if store_feedback("", comments):
                         st.session_state.feedback_submitted = True
                         st.success("🎉 Thank you for your feedback!")
                     else:
                         st.error("❌ Failed to submit feedback")
-                else:
-                    st.warning("⚠️ Please select a rating")
     else:
         st.success("✅ Feedback submitted successfully!")
         if st.button("📝 Submit New Feedback"):
