@@ -12,6 +12,7 @@ from datetime import datetime
 # ----------------------------
 
 def remove_duplicates(source_df):
+    """Remove duplicates from source dataframe"""
     duplicates = source_df.duplicated(subset=['Revised Copy'], keep='first')
     if duplicates.any():
         st.info("Duplicates found in Source Sheet. Removing duplicates...")
@@ -21,6 +22,7 @@ def remove_duplicates(source_df):
     return source_df
 
 def map_content(source_df, site_df):
+    """Map content between source and site dataframes"""
     source_df = remove_duplicates(source_df)
     source_dict = {row['Design Copy']: (index, row['Revised Copy']) 
                    for index, row in source_df.iterrows()}
@@ -44,12 +46,12 @@ def map_content(source_df, site_df):
     return site_df
 
 def structure_and_format_data(raw_data, group_column='frame'):
+    """Structure and format the processed data"""
     structured_data = pd.DataFrame(columns=raw_data.columns)
     
     for name, group in raw_data.groupby(group_column, sort=False):
-        # Fixed syntax error in this line
         title_row = pd.DataFrame(
-            [[name] + [''] * (len(raw_data.columns) - 1)],  # Added missing parenthesis
+            [[name] + [''] * (len(raw_data.columns) - 1)],
             columns=raw_data.columns
         )
         
@@ -64,6 +66,7 @@ def structure_and_format_data(raw_data, group_column='frame'):
     return structured_data.iloc[:-1]
 
 def to_excel(df):
+    """Convert dataframe to formatted Excel file"""
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Sheet1')
@@ -81,7 +84,7 @@ def to_excel(df):
 # ----------------------------
 
 def init_google_sheets():
-    """Initialize Google Sheets connection with modern auth"""
+    """Initialize Google Sheets connection"""
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
@@ -93,7 +96,7 @@ def init_google_sheets():
         )
     )
 
-def store_feedback(rating, comments):
+def store_feedback(comments):
     """Store feedback in Google Sheets"""
     try:
         client = init_google_sheets()
@@ -103,7 +106,6 @@ def store_feedback(rating, comments):
             
         sheet.append_row([
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            str(rating),
             comments,
             user_email
         ])
@@ -142,7 +144,13 @@ with st.expander("📤 Upload and Process Files", expanded=True):
                 structured_df = structure_and_format_data(mapped_df)
                 st.session_state.structured_df = structured_df
                 st.success("✅ Structuring completed!")
-                
+
+            # Preview Section
+            st.subheader("📋 Processed Data Preview")
+            st.write("First 15 rows of the structured data:")
+            st.dataframe(structured_df.head(15), height=400)
+            
+            # Download Section
             st.download_button(
                 "💾 Download Result",
                 to_excel(structured_df),
@@ -160,34 +168,20 @@ with st.expander("💬 Provide Feedback", expanded=True):
 
     if not st.session_state.feedback_submitted:
         with st.form("feedback_form"):
-            rating = st.radio(
-                "How would you rate this app?",
-                options=[5, 4, 3, 2, 1],
-                format_func=lambda x: f"{x} {'⭐' * x}",
-                index=None
-            )
-            comments = st.text_area("Your comments/suggestions")
+            comments = st.text_area("Your comments or suggestions (required)")
             
             if st.form_submit_button("📤 Submit Feedback"):
-                if rating:
-                    if store_feedback(rating, comments):
+                if comments.strip():
+                    if store_feedback(comments):
                         st.session_state.feedback_submitted = True
                         st.success("🎉 Thank you for your feedback!")
                     else:
                         st.error("❌ Failed to submit feedback")
                 else:
-                    st.warning("⚠️ Please select a rating")
+                    st.warning("⚠️ Please provide comments before submitting")
     else:
         st.success("✅ Feedback submitted successfully!")
         if st.button("📝 Submit New Feedback"):
             st.session_state.feedback_submitted = False
             st.rerun()
 
-# Requirements
-st.markdown("""
----
-**Requirements**  
-1. Enable [Google Sheets API & Drive API](https://console.cloud.google.com/apis)  
-2. Set up [secrets.toml](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management)  
-3. Required columns: `Design Copy`, `Revised Copy`, and `frame`
-""")
