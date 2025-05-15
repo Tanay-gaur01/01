@@ -93,7 +93,7 @@ def init_google_sheets():
         )
     )
 
-def store_feedback(rating, comments):
+def store_feedback(comments):
     """Store feedback in Google Sheets"""
     try:
         client = init_google_sheets()
@@ -103,7 +103,6 @@ def store_feedback(rating, comments):
             
         sheet.append_row([
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            str(rating),
             comments,
             user_email
         ])
@@ -162,13 +161,14 @@ with st.expander("💬 Provide Feedback", expanded=True):
 
     if not st.session_state.feedback_submitted:
         with st.form("feedback_form"):
+            
             comments = st.text_area("Your comments/suggestions")
             
             if st.form_submit_button("📤 Submit Feedback"):
-                    if store_feedback("", comments):
+                if store_feedback(comments):
                         st.session_state.feedback_submitted = True
                         st.success("🎉 Thank you for your feedback!")
-                    else:
+                else:
                         st.error("❌ Failed to submit feedback")
     else:
         st.success("✅ Feedback submitted successfully!")
